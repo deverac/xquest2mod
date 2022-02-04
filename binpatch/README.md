@@ -1,5 +1,7 @@
-**xquest2mod** - Patch the [XQuest2](http://www.swallowtail.org/xquest/) binary
-to enable Power Ups, and more.
+# BinPatch
+
+This sub-project patches the [XQuest2](http://www.swallowtail.org/xquest/)
+binary to enable Power Ups, and more.
 
 XQuest2 is a (better!) clone of Macintosh's Crystal Quest. You may also be
 interested in [xquestjs](https://github.com/scottrippey/xquestjs) which is

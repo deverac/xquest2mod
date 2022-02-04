@@ -1,0 +1,129 @@
+This document attempts to summarize the licensing of the XQuest2 source code.
+
+I did not write XQuest2 and I am not a lawyer, so do not take this as any kind
+of valid legal opinion. This is a layman's attempt to make sense of various
+licensing texts.
+
+In my non-lawyer opinion, the short version is: Copying and distributing are
+explicitly allowed. The license neither explicitly allows nor explicitly
+forbids distributing modified versions of XQuest2.
+
+
+
+
+
+# XLIB - C code
+
+Themie Gouthas (and other contributors) wrote XLIB for DOS. In XLIBREF1.DOC of
+http://ftp.lanet.lv/ftp/mirror/x2ftp/msdos/programming/xlib/xlib06.zip the
+author states:
+
+   "I informally reserve all rights to the code in XLIB. Rights to
+    contributed code is also assumed to be reserved by the original authors."
+
+but three sentences later states:
+
+    "It has been placed in the public domain for the benefit of all"
+
+It seems more reasonable (to me) that the author(s) may have originally
+reserved 'all rights' to the software, but then later released the code to
+public domain, rather than the opposite (release the code to the public domain,
+and then later 'reserve all rights').
+
+So, it appears (to me) that the XLIB software, written in C code, is in the
+public domain.
+
+
+
+
+
+# XLIB - Pascal code
+
+Tristan Tarrant converted selected parts of the XLIB C code to Turbo/Borland
+Pascal and appears to have released his Pascal code to the public domain. In
+XLIB.DOC of http://www.filegate.net/pub/pascal-net/pasgraph/xlibpas.zip the
+author writes:
+
+    "It has been placed in the public domain for the benefit of all"
+
+So, it appears (to me) that the XLIB software, written in Pascal code, is in
+the public domain.
+
+
+
+
+
+# XLIB - XQUEST
+
+Mark 'AtomJack' Mackey, the author of XQuest2, modified the Turbo/Borland
+Pascal version of XLIB to suit the needs of XQuest2. He released the source
+code of XQuest2, but did not include his modified version of the XLIB library.
+Since the author released all the source files of XQuest2, the fact that he
+did not include his modified version of the XLIB library seems (to me) like
+more of an oversight than an intentional act of withholding. Fortunately, when
+he released the source code, he included a binary version (XLIB.TPU, generated
+by Turbo Pascal 6) of his modified XLIB library.
+
+The LICENSE.DOC included in XQuest2 is a bit confusing. It states:
+
+   "The game may not be included in a CD-ROM or other compilation"
+
+but later, states:
+
+    "This software may be included on a floppy disk or CD-ROM"
+
+The XQuest2 license allows copying and/or distributing the software, provided
+certain files are included. The license neither explicitly allows nor
+explicitly forbids distributing modified versions of XQuest2.
+
+
+
+
+# Attempts to contact the author of XQuest2.
+
+It seems that Mark Mackey wrote XQuest2 while he was attending Cambridge
+University. Based on a document included with some source code (collide.zip)
+that he released in 1995, there was once an XQUEST webpage hosted at the
+University of Cambridge: https://www.ch.cam.ac.uk/MMRG/people/mdm/xquest.html.
+The link no longer works.
+
+The XQuest2 source code contains a University of Cambridge e-mail address
+(mdm1004@cus.cam.ac.uk) to contact the author. I sent an e-mail message to that
+address (in Dec 2021), but it was returned as undeliverable.
+
+The XQuest2 source code contains a postal address (Mark Mackey, c/o Trinity
+Hall, Cambridge CB2 1TJ), but given that:
+    1) XQuest2 was released around 1996,
+    2) the XQuest2 website at Cambridge is defunct,
+    3) email sent to the Cambridge email address was returned as undeliverable,
+I think it's reasonable to conclude that any postal mail sent to that address
+will not reach its intended recipient.
+
+It seems that once Mark Mackey left Cambridge he created a website for XQuest2
+at: http://www.swallowtail.org/xquest/ As of Feb 2022, the XQuest2 webpage is
+still accessible. The website states, in part "The source code to XQuest is
+available. ... [It] should still compile and run and will be useful for
+those who've been asking how the game works."
+
+The web page provides an email address (mark@swallowtail.org) to contact the
+author. When I sent an e-mail message, I apparently received a response, but my
+e-mail provider notified me that it detected a virus in the response and
+automatically deleted the entire response.
+
+The web page also provides a link to the source code
+http://www.swallowtail.org/xquest/xquest_1.3_src.tar.gz, but the link no
+longer works.
+
+
+
+In May 1995, Mark Mackey released some collision detection code titled:
+"A Pixel-Precision Method For Detecting Sprite Collision". A copy can be found
+at http://ftp.lanet.lv/ftp/mirror/x2ftp/msdos/programming/theory/collide.zip.
+In the included COLLIDE.DOC, he states, in part:
+
+    "Permission is given to distribute this code freely, or to
+     distribute modified forms of this software..."
+
+His University of Cambridge e-mail address, website, and postal address (all
+mentioned above) are included in the document.
+

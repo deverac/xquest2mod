@@ -1,0 +1,92 @@
+This document gives a short history of XLIB used in XQuest2.
+
+[XLIB](https://en.wikipedia.org/wiki/Xlib) is a protocol/library for interacting
+with an X Server. In a simple sense, XLIB provides methods for drawing on a
+screen. e.g. The `XLine()` procedure draws a line on the screen.
+
+Themie Gouthas (and other contributors) implemented parts of the XLIB spec in
+the C language to run on DOS to allow graphics programs to take full advantage
+of the VGA hardware.
+
+Tristan Tarrant converted selected portions of the C version of XLIB to
+Turbo/Borland Pascal.
+
+Mark 'AtomJack' Mackey, the author of XQuest2, modified the Turbo/Borland
+Pascal version of XLIB to suit the needs of XQuest2.
+
+Among the modifications are:
+
+    * Added XMODETEXT
+
+    * Added SCROFFSETTABLE
+
+    * XSetMode() returns an Integer, rather than a Word.
+
+    * When calling XTextMode(), the CurrXMode is updated.
+
+    * Parameters of XLine() were swapped:
+
+         Before: XLine(x1, y1, x2, y2, Color, PgOffs)
+         After : XLine(x1, y1, x2, y2, PgOffs, Color)
+
+    * XSetDoubleBuffer() was changed from a Procedure to a Function.
+
+    * Some assembly instructions were altered:
+
+         Before: xchg bx,VisiblePageOffs
+         After : xchg VisiblePageOffs,bx
+
+Other code modifications were also made.
+
+When Mark Mackey released the source code of XQuest2, the release included
+XLIB.TPU, a compiled version of Mark Mackey's modified XLIB library. The release
+did not include the source file, XLIB.PAS, which was used to generate XLIB.TPU.
+
+The XLIB.TPU file is a binary format created by the Turbo Pascal 6 compiler
+when it compiled the XLIB.PAS unit. Turbo Pascal 7 also creates TPU files when
+it compiles units, but it uses a different internal format than Turbo Pascal 6.
+No other compiler, including Turbo Pascal 7, could read/use the XLIB.TPU file
+created by Turbo Pascal 6.
+
+What this meant is that since XLIB.TPU was created by Turbo Pascal 6, the
+*only* way that XQUEST.EXE could be built was to compile the XQuest2 sources
+using Turbo Pascal 6.
+
+Fortunately, the
+[intrfc70.zip](http://ftp.lip6.fr/pub/pc/garbo/pc/turbopas/intrfc70.zip)
+utility exists. The intrfc utility is able to read a TPU file and dump its
+binary content in a meaningful manner. It can output the names, the arguments,
+and the binary code of each method stored in the TPU file.
+
+The intrfc tool, along with Tristan Tarrant's XLIB Pascal source files, allowed
+[deverac](https://github.com/deverac) to re-create Mark Mackey's 'missing'
+XLIB.PAS file. When the re-created XLIB.PAS file was compiled with Turbo
+Pascal 6, it generated an XLIB.TPU file containing methods that were
+bit-for-bit identical to the XLIB.TPU file that was released with XQuest2
+sources.
+
+Once the 'missing' XLIB.PAS had been recreated, deverac modified the XQuest2
+source code so that it could be compiled with
+[Free Pascal Compiler](https://www.freepascal.org/).
+
+The end result of this is XQUEST.EXE can now be built with Turbo Pascal 6,
+Turbo Pascal 7, or cross-compiled with Free Pascal Compiler on Linux.
+
+
+
+Fun fact: XQuest2 was included on the CD that was distributed with
+[PC Zone Issue 39 July 1996](https://www.pixsoriginadventures.co.uk/PCZone/PC%20Zone%2039%20(June%201996)/)
+The 'XQUEST 2' name also appears in PC Zone Issue 40 July 1996 on page 119,
+which contains a picture of the CD cover included in Issue 39.
+
+To access the CD image from pixsoriginadventures.co.uk on Linux:
+
+    $ unrar-nonfree x CDZone#39.rar         Decompress image (`unrar-free` did not work)
+    $ ccd2iso CDZone#39.img cdzone39.iso    Convert img format to iso format
+    # mount -o loop cdzone39.iso /mnt       Mount iso image
+
+
+
+
+
+[intrfc source](https://github.com/codersclub/pascal_sources/tree/master/hacker)

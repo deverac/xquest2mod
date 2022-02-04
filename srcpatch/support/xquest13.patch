@@ -1,0 +1,2257 @@
+diff -uraN src13/joystick.pas src14/joystick.pas
+--- src13/joystick.pas	1996-03-26 07:34:08.000000000 -0600
++++ src14/joystick.pas	2022-02-02 15:37:44.030790043 -0600
+@@ -98,7 +98,11 @@
+   mov dx,JoyStickPort
+   in  al,dx
+   not al
+-  and al,(JoyStickAButton1 or JoyStickAButton2 or JoyStickBButton1 or JoyStickBButton2)
++  mov ah,JoyStickAButton1
++  or ah,JoyStickAButton2
++  or ah,JoyStickBButton1
++  or ah,JoyStickBButton2
++  and al,ah
+ end;
+ 
+ function JoystickButtonPressed: byte;
+@@ -184,7 +188,8 @@
+   test tby,$ffff;
+   jz @getby;
+ @notby:
+-  test al,JoySelect;  {Have all the bits settled?}
++  mov ah,JoySelect;
++  test al,ah;         {Have all the bits settled?}
+   jz @end;            {Yes, finished}
+ 
+   mov al,$80;
+diff -uraN src13/sbunit.pas src14/sbunit.pas
+--- src13/sbunit.pas	1996-03-13 06:33:40.000000000 -0600
++++ src14/sbunit.pas	2022-02-02 15:37:44.034790043 -0600
+@@ -127,7 +127,7 @@
+ 
+   DmaHandler:pointer;
+ 
+-  IRQController,IMR,IRQvector,IRQMask:word;
++  IRQController,IMR:word;
+   SavedIMR1,SavedIMR2:byte;
+ 
+   Sounds:array[1..CompiledMaximumSoundEffects] of SoundRec;
+@@ -220,7 +220,11 @@
+ 	mov     si,[DmaBuffer]   {Yes, set up first half}
+ 	push    ds
+ 	push    [DmaBuffer]
++{$IFDEF FPC}
++	push    WORD DmaBufSize/2
++{$ELSE}
+ 	push    DmaBufSize/2
++{$ENDIF}
+ 	call    GetSamples       {params ptr(DMABuffer), DmaBufSize/2 }
+ 	inc     [DmaFlag]        {Toggle switch}
+ 	jmp     @@Bye
+@@ -250,7 +254,11 @@
+ 	mov     si,[DmaBuffer]   {Yes, set up first half}
+ 	push    ds
+ 	push    [DmaBuffer]
++{$IFDEF FPC}
++	push    WORD DmaBufSize/2
++{$ELSE}
+ 	push    DmaBufSize/2
++{$ENDIF}
+ 	call    GetSamples       {params ptr(DMABuffer), DmaBufSize/2 }
+ end;
+ 
+@@ -803,8 +811,7 @@
+ procedure SetSBVolume2(Volume:integer);
+  {poor method: fails for low volume. Calculate one compander table for
+    max volume and then scale used one by old volume array?}
+-var i,j,half:integer;
+-    ratio:real;
++var i,half:integer;
+ begin
+   half:=CompSize div 2;
+ 
+diff -uraN src13/starunit.pas src14/starunit.pas
+--- src13/starunit.pas	1996-03-13 06:33:24.000000000 -0600
++++ src14/starunit.pas	2022-02-02 15:37:44.034790043 -0600
+@@ -50,8 +50,7 @@
+      stararraytype=array[1..maxstars] of startype;
+ 
+ var star:^stararraytype;
+-    i,j,NumStars:integer;
+-    ch:char;
++    i,NumStars:integer;
+ 
+ procedure initstar(i:integer);  {initialise stars at random positions}
+ begin
+@@ -102,7 +101,11 @@
+ 	push    es:[si+startype.xz]     { push x}
+ 	push    es:[si+startype.yz]     { push y}
+ 	push    VisiblePageOffs
++{$IFDEF FPC}
++	push    WORD 0F00h
++{$ELSE}
+ 	push    0F00h
++{$ENDIF}
+ 	call    Xputpix         { erase old star position: speed up}
+ 	pop     si
+ 	pop     es
+@@ -295,7 +298,6 @@
+ end;
+ 
+ procedure starfieldstepNoVSync;
+-var count:word;
+ begin
+   for i:=1 to numstars do update(star^[i],i);  {update star positions}
+ end;
+diff -uraN src13/xlib.pas src14/xlib.pas
+--- src13/xlib.pas	1969-12-31 18:00:00.000000000 -0600
++++ src14/xlib.pas	2022-02-02 15:40:00.682793586 -0600
+@@ -0,0 +1,1580 @@
++{Âº--------------------------------------------------------------------------Âº
++ Âº                                                                          Âº
++ Âº          XLIB for XQUEST2 - a modified, truncated version of:            Âº
++ Âº               XLIB v1.0 for BORLAND/TURBO PASCAL 6.0/7.0                 Âº
++ Âº                                                                          Âº
++ Âº--------------------------------------------------------------------------Âº
++ Âº 																																					Âº
++ Âº 										   Original version written by				            		Âº
++ Âº 			Themie Gouthas  (egg@dstos3.dsto.gov.au / teg@bart.dsto.gov.au)     Âº
++ Âº 																																					Âº
++ Âº 								  Conversion to Borland/Turbo Pascal by				  					Âº
++ Âº 								Tristan Tarrant (tristant@cogs.susx.ac.uk)								Âº
++ Âº 																																					Âº
++ Âº--------------------------------------------------------------------------Âº}
++
++Unit XLib;
++
++Interface
++
++Const
++	XMODETEXT     = 65535;
++	XMode320x240	= 1;
++
++	Error         = 1;
++
++	TweakValues_0 : array[0..4] of word = ( $0200, $0014, $E317, 320, 200);
++	TweakValues_5 : array[0..12] of word = (
++		$0AE3, $0D06, $3E07, $4109, $EA10, $AC11, $DF12, $0014, $E715, $0616,
++	$E317, 320, 240);
++	TweakValues_18 : array[0..10] of word = (
++			$08E7, $6B00, $5901, $5A02, $8E03, $5E04, $8A05, $0014, $E317, 360, 200);
++	TweakValues_29 : array[0..19] of word = (
++			$11E7, $6b00, $5901, $5A02, $8E03, $5E04, $8A05, $0D06, $3E07, $4109,
++				$EA10, $AC11, $DF12, $2D13, $0014, $E715, $0616, $E317, 360, 240 );
++	TweakValues_49 : array[0..20] of word = (
++			$12E7, $6E00, $5D01, $5E02, $9103, $06204, $8F05, $6206, $F007, $6109,
++				$310F, $3710, $8911, $3312, $2F13, $0014, $3C15, $5C16, $E317, 376, 564 );
++	TweakValues_70 : array[0..5] of word = (
++			$03E3, $4009 ,$0014, $E317, 320, 400 );
++	TweakValues_76 : array[0..12] of word = (
++			$0AE3, $0D06, $3E07, $4009, $EA10, $AC11, $DF12, $0014, $E715, $0616,
++				$E317, 320, 480 );
++	TweakValues_89 : array[0..11] of word = (
++			$09E7, $6B00, $5901, $5A02, $8E03, $5E04, $8A05, $4009, $0014, $E317,
++				360, 400 );
++	TweakValues_101 : array[0..19] of word = (
++			$11E7, $6B00, $5901, $5A02, $8E03, $5E04, $8A05, $0D06, $3E07, $4009,
++				$EA10, $AC11, $DF12, $2D13, $0014, $E715, $0616, $E317, 360, 480 );
++	TweakValues_121 : array[0..17] of word = (
++			$0FE7, $6b00, $5901, $5A02, $8E03, $5E04, $8A05, $4009, $8810, $8511,
++				$6712, $2D13, $0014, $6D15, $BA16, $E317, 360, 360 );
++	TweakValues_139 : array[0..20] of word = (
++			$12E7, $6E00, $5D01, $5E02, $9103, $6204, $8F05, $6206, $0F07, $4009,
++				$310F, $3710, $8911, $3312, $2F13, $0014, $3C15, $5C16, $E317, 376, 308 );
++	TweakValues_160 : array[0..20] of word = (
++			$12E7, $6E00, $5D01, $5E02, $9103, $6204, $8F05, $6206, $F007, $6009,
++				$310F, $3710, $8911, $3312, $2F13, $0014, $3C15, $5C16, $E317, 376, 564 );
++
++	ModeTable : array[0..11] of word =
++		( Ofs(TweakValues_0), Ofs(TweakValues_5), Ofs(TweakValues_18),
++			Ofs(TweakValues_29), Ofs(TweakValues_49), Ofs(TweakValues_70),
++			Ofs(TweakValues_76), Ofs(TweakValues_89), Ofs(TweakValues_101),
++			Ofs(TweakValues_121), Ofs(TweakValues_139), Ofs(TweakValues_160) );
++
++
++	PelPanMask : array[0..3] of byte =
++		( 0, 2, 4, 6 );
++	LeftClipPlaneMask  : array[0..3] of byte =
++		( $0F, $0E, $0C, $08 );
++	RightClipPlaneMask : array[0..3] of byte =
++		( $0F, $01, $03, $07 );
++	ColumnMask : array[0..3] of byte =
++		( $11, $22, $44, $88 );
++
++	AcIndex       =  $03C0;
++	MiscOutput    =  $03C2;
++	ScIndex       =  $03C4;
++	GcIndex       =  $03CE;
++	CrtcIndex     =  $03D4;
++	DACWriteIndex =  $03C8;
++	DACData       =  $03C9;
++	InputStatus0  =  $03DA;
++	ScreenSeg     =  $0A000;
++	MapMask       =  $02;
++	ReadMap       =  $04;
++	BitMask       =  $08;
++	Overflow      =  $07;
++	MaxScanLine   =  $09;
++	AddrHigh      =  $0C;
++	AddrLow       =  $0D;
++	CrtcOffset    =  $13;
++	LineCompare   =  $18;
++	AcModeControl =  $10;
++	PelPanning    =  $13;
++	OK            =  0;
++	RolAl         =  $0C0D0;
++	ShortStore8   =  $044C6;
++	Store8        =  $084C6;
++	ShortStore16  =  $044C7;
++	Store16       =  $084C7;
++	AdcSiImmed    =  $0D683;
++	OutAl         =  $0EE;
++	Return        =  $0CB;
++
++
++	
++
++Var
++	InGraphics,
++	ErrorValue,
++	DoubleScanFlag : Byte;
++	CurrXMode,
++	ScrnPhysicalByteWidth,
++	ScrnPhysicalPixelWidth,
++	ScrnPhysicalHeight,
++	SplitScrnOffs,
++	SplitScrnScanLine,
++	SplitScrnVisibleHeight,
++	SplitScrnActive,
++	Page0Offs,
++	Page1Offs,
++	Page2Offs,
++	ScrnLogicalByteWidth,
++	ScrnLogicalPixelWidth,
++	ScrnLogicalHeight,
++	MaxScrollX,
++	MaxScrollY,
++	DoubleBufferActive,
++	TripleBufferActive,
++	VisiblePageIdx,
++	HiddenPageOffs,
++	VisiblePageOffs,
++	WaitingPageOffs,
++	NonVisualOffs,
++	TopClip,
++	BottomClip,
++	LeftClip,
++	RightClip,
++	PhysicalStartPixelX,
++	PhysicalStartByteX,
++	PhysicalStartY,
++	VsyncHandlerActive,
++	StartAddressFlag,
++	WaitingStartLow,
++	WaitingStartHigh,
++	WaitingPelPan: Word;
++	SCROFFSETTABLE:  array[0..800] of WORD;
++
++Function	XSetMode( Mode, WidthInPixels : Word ) : Integer;
++Procedure XSetSplitscreen( Line : Word );
++Function	XSetDoubleBuffer( PageHeight : Word ): Integer;
++Procedure XPageFlip( X, Y : Word );
++Procedure XTextMode;
++Procedure XLine( x1, y1, x2, y2, PgOffs, Color : word );
++Procedure XPutPix( X,Y,PgOfs,Color:word );
++Procedure XRectFill( StartX,StartY,EndX,EndY,PageBase,Color:word );
++Procedure XCpVidRect( SrcStartX,SrcStartY,SrcEndX,SrcEndY,DestStartX,
++											DestStartY,SrcPageBase,DestPageBase,SrcBitmapW,
++											DestBitmapW:word );
++Procedure XBmToPbm( var source, dest );
++Procedure XPutPbm( X,Y,ScrnOffs:word; var Bitmap );
++Procedure XGetPbm( X,Y: word;SrcWidth,SrcHeight:byte;
++									 ScrnOffs:word; var Bitmap );
++Procedure XCompileBitmap( logicalwidth:word; var bitmap, output );
++Function  XSizeOfCBitmap( logicalwidth:word; var bitmap ):word;
++Procedure XPutCBitmap( XPos,YPos,PageOffset:word; var Sprite );
++Procedure XPutPalStruc( Var CompPalBuff );
++Procedure XPutPalRaw( Var PalBuff; NumColors,StartColor:word );
++Procedure XSetRGB( ColorIndex,R,G,B:byte );
++
++Implementation
++
++Function	XSetMode( Mode, WidthInPixels : Word ) : Integer; assembler;
++asm
++	mov InGraphics,0
++	mov ErrorValue,0
++	mov DoubleScanFlag,0
++	mov CurrXMode,0
++	mov ScrnPhysicalByteWidth,0
++	mov	ScrnPhysicalPixelWidth,0
++	mov ScrnPhysicalHeight,0
++	mov SplitScrnOffs,0
++	mov SplitScrnScanLine,0
++	mov SplitScrnVisibleHeight,0
++	mov SplitScrnActive,0
++	mov Page0Offs,0
++	mov Page1Offs,0
++	mov Page2Offs,0
++	mov ScrnLogicalByteWidth,0
++	mov ScrnLogicalPixelWidth,0
++	mov ScrnLogicalHeight,0
++	mov MaxScrollX,0
++	mov MaxScrollY,0
++	mov DoubleBufferActive,0
++	mov VisiblePageIdx,0
++	mov HiddenPageOffs,0
++	mov VisiblePageOffs,0
++	mov NonVisualOffs,0
++	mov TopClip,0
++	mov BottomClip,0
++	mov LeftClip,0
++	mov RightClip,0
++	mov PhysicalStartPixelX,0
++	mov PhysicalStartByteX,0
++	mov PhysicalStartY,0
++	cld
++	mov   ax,ds
++	mov   es,ax
++	mov   cx,mode
++	cmp   cx,13
++	jle   @@ValidMode
++	mov   InGraphics,0
++	mov   ax,-1
++	jmp @@Done
++
++@@ValidMode:
++	mov   CurrXMode,cx
++	mov   InGraphics,1
++	xor   al,al
++	cmp   cx,3
++	jg    @@SetDoubleScanFlag
++	mov   al,1
++
++@@SetDoubleScanFlag:
++	mov   DoubleScanFlag,al
++	push  cx
++	mov   ax,13h
++	int   10h
++	pop   cx
++	mov   dx,ScIndex
++	mov   ax,0604h
++	out   dx,ax
++	mov   ax,0100h
++	out   dx,ax
++	mov   bx,offset ModeTable
++	shl   cx,1
++	add   bx,cx
++	mov   si, word ptr [bx]
++	lodsb
++	or    al,al
++	jz    @@DontSetDot
++	mov   dx,MISCOUTPUT
++	out   dx,al
++
++@@DontSetDot:
++	mov   dx,ScIndex
++	mov   ax,0300h
++	out   dx,ax
++	mov   dx,CrtcIndex
++	mov   al,11h
++	out   dx,al
++	inc   dx
++	in    al,dx
++	and   al,07fh
++	out   dx,al
++	dec   dx
++	cld
++	xor   cx,cx
++	lodsb
++	mov   cl,al
++
++@@SetCRTParmsLoop:
++	lodsw
++
++	out   dx,ax
++	loop  @@SetCRTParmsLoop
++	mov   dx,ScIndex
++	mov   ax,0f02h
++	out   dx,ax
++	mov   ax,ScreenSeg
++	mov   es,ax
++	sub   di,di
++	sub   ax,ax
++	mov   cx,8000h
++	rep   stosw
++	lodsw
++	mov   ScrnPhysicalPixelWidth,ax
++	mov   SplitScrnScanLine,ax
++	mov   bx,ax
++	shr   ax,2
++	mov   ScrnPhysicalByteWidth,ax
++	lodsw
++	mov   ScrnPhysicalHeight,ax
++	mov   cx,widthinpixels
++	mov   dx,CrtcIndex
++	mov   al,CRTCOFFSET
++	out   dx,al
++	inc   dx
++	mov   ax,cx
++	cmp   ax,ScrnPhysicalPixelWidth
++	jge   @@ValidLogicalWidth
++	mov   ax,bx
++
++@@ValidLogicalWidth:
++	shr   ax,3
++	out   dx,al
++	shl   ax,1
++	mov   bx,ax
++	mov   ScrnLogicalByteWidth,ax
++	mov   RightClip,ax
++	sub   ax,ScrnPhysicalByteWidth
++	shl   ax,2
++	mov   MaxScrollX,ax
++	mov   ax,bx
++	shl   ax,2
++	mov   ScrnLogicalPixelWidth,ax
++	mov   cx,ax
++	mov   ax,0ffffh
++	sub   dx,dx
++	div   bx
++	mov   ScrnLogicalHeight,ax
++	mov   BottomClip,ax
++	sub   ax,ScrnPhysicalHeight
++	mov   MaxScrollY,ax
++	mov   ax,cx
++	mov   ax,ScrnLogicalByteWidth
++	mul   ScrnPhysicalHeight
++	mov   NonVisualOffs,ax
++
++	mov ax, 0
++	mov bx, 0
++	mov cx, ScrnLogicalHeight
++@@Finloop:
++	mov WORD PTR SCROFFSETTABLE[bx], ax
++	add ax, ScrnLogicalByteWidth
++	inc bx
++	inc bx
++	dec cx
++	jnz @@Finloop
++
++@@Done:
++	mov		ax, 0CB00h
++	int		10h
++	mov ax, ScrnLogicalPixelWidth
++
++End;
++
++Procedure XSetSplitscreen( Line : Word ); assembler;
++asm
++	xor  si,si
++	cmp  DoubleBufferActive,0
++	jne  @@error
++	cmp  SplitScrnActive,0
++	je   @@NotPreviouslyCalled
++
++@@error:
++	mov  ErrorValue,ERROR
++	ret
++
++@@NotPreviouslyCalled:
++	mov  dx,InputStatus0
++	in   al,dx
++	mov  al,ACMODECONTROL+20h
++	mov  dx,ACINDEX
++	out  dx,al
++	inc  dx
++	in   al,dx
++	or   al,20h
++	dec  dx
++	out  dx,al
++	mov  PhysicalStartByteX,ax
++	mov  PhysicalStartPixelX,ax
++	mov  PhysicalStartY,ax
++	mov  SplitScrnActive,1
++	mov  ax,Line
++	jns  @@NotNeg
++	mov  ax,0
++
++@@NotNeg:
++	mov  SplitScrnScanLine,ax
++	or   DoubleScanFlag,0
++	jz   @@NotDoubleScanned
++	shl  ax,1
++	dec  ax
++
++@@NotDoubleScanned:
++	mov  bx,ax
++	mov  dx,InputStatus0
++
++@@WaitNotVsync:
++	in   al,dx
++	test al,08h
++	jnz  @@WaitNotVsync
++
++@@WaitVsync:
++	in   al,dx
++	test al,08h
++	jz   @@WaitVsync
++	cli
++	mov  dx,CrtcIndex
++	mov  ah,bl
++	mov  al,LINECOMPARE
++	out  dx,ax
++	mov  ah,bh
++	and  ah,1
++	shl  ah,4
++	mov  al,Overflow
++	out  dx,al
++	inc  dx
++	in   al,dx
++	and  al, not 10h
++	or   al,ah
++	out  dx,al
++	dec  dx
++	mov  ah,bh
++	and  ah,2
++	ror  ah,3
++	mov  al,MAXSCANLINE
++	out  dx,al
++	inc  dx
++	in   al,dx
++	and  al, not 40h
++	or   al,ah
++	out  dx,al
++	sti
++	mov  SplitScrnVisibleHeight,bx
++	mov  ax,ScrnPhysicalHeight
++	sub  ax,SplitScrnScanLine
++	mov  bx,ScrnLogicalByteWidth
++	mul  bx
++	add ax,ScrnLogicalByteWidth
++	mov  Page0Offs,ax
++	mov  Page1Offs,ax
++	mov  Page2Offs,ax
++	mov  cx,0ffffh
++	sub  cx,ax
++	xchg cx,ax
++	sub  dx,dx
++	div  bx
++	mov  ScrnLogicalHeight,ax
++	cmp  ax,BottomClip
++	jle  @@BottomClipOK
++	mov  BottomClip,ax
++
++@@BottomClipOK:
++	sub  ax,SplitScrnScanLine
++	mov  MaxScrollY,ax
++	xchg cx,ax
++	mov  bh,al
++	mov  ch,ah
++	mov  bl,ADDRLOW
++	mov  cl,ADDRHIGH
++	and  si,0003h
++	mov  ah,byte ptr PelPanMask[si]
++	mov  al,PELPANNING+20h
++	mov  si,ax
++	mov  dx,InputStatus0
++
++@@WaitDE:
++	in   al,dx
++	test al,01h
++	jnz  @@WaitDE
++	mov  dx,CrtcIndex
++	mov  ax,bx
++	out  dx,ax
++	mov  ax,cx
++	out  dx,ax
++	mov  dx,ACINDEX
++	mov  ax,si
++	out  dx,al
++	mov  al,ah
++	out  dx,al
++	mov  dx,InputStatus0
++
++@@WaitVS:
++	in   al,dx
++	test al,08h
++	jz @@WaitVS
++	mov  ErrorValue,OK
++end;
++
++Function XSetDoubleBuffer( PageHeight : Word ): Integer; assembler;
++asm
++	cmp   DoubleBufferActive,0
++	je    @@OkToContinue
++@error:
++	mov   ErrorValue,ERROR
++	mov ax, 0FFFFh
++	ret
++
++@@OkToContinue:
++	mov  VisiblePageIdx,0
++	mov  ax,ScrnLogicalHeight
++	shr  ax,1
++	mov  bx,PageHeight
++	cmp  ax,bx
++	js   @@InvalidHeight
++	mov  ax,bx
++
++@@InvalidHeight:
++	mov   ScrnLogicalHeight,ax
++	cmp   ax,BottomClip
++	jle   @@BottomClipOK
++	mov   BottomClip,ax
++@@BottomClipOK:
++	mov   si,ax
++	mul   ScrnLogicalByteWidth
++	mov   cx,ax
++	mov   bx,Page0Offs
++	mov   VisiblePageOffs,bx
++	add   ax,bx
++	mov   Page1Offs,ax
++	mov   HiddenPageOffs,ax
++	add   ax,cx
++	mov   NonVisualOffs,ax
++	mov   DoubleBufferActive,1
++	mov   ax,si
++	sub   ax,ScrnPhysicalHeight
++	add   ax,SplitScrnVisibleHeight
++	mov   MaxScrollY,ax
++	mov   ErrorValue,OK
++	mov   ax,si
++end;
++
++
++Procedure XPageFlip( X, Y : Word ); assembler;
++asm
++	mov  si,x
++	mov  ax,ScrnLogicalByteWidth
++	mov  cx,y
++	mul  cx
++	cmp  DoubleBufferActive,1
++	je   @@DoubleBuffer
++	cmp  TripleBufferActive,1
++	jne  @@PageFlipEntry1
++	mov  bx,HiddenPageOffs
++	xchg VisiblePageOffs,bx
++	xchg WaitingPageOffs,bx
++	mov  HiddenPageOffs,bx
++	mov  bx, VisiblePageIdx
++	inc  bx
++	cmp  bx,3
++	jne  @@IdxOk
++	xor  bx,bx
++@@IdxOk:
++	mov  VisiblePageIdx,bx
++	jmp  @@PageFlipEntry2
++
++@@DoubleBuffer:
++	mov  bx,HiddenPageOffs
++	xchg VisiblePageOffs,bx
++	xchg HiddenPageOffs,bx
++	xor  VisiblePageIdx,01h
++	jmp  @@PageFlipEntry2
++
++@@PageFlipEntry1:
++	add  ax,Page0Offs
++	jmp  @@AddColumn
++
++@@PageFlipEntry2:
++	mov  PhysicalStartPixelX,si
++	mov  PhysicalStartY,cx
++
++@@PageResolution:
++	add  ax,VisiblePageOffs
++
++@@AddColumn:
++	mov  cx,si
++	shr  cx,2
++	mov  PhysicalStartByteX,cx
++	add  ax,cx
++	mov  bh,al
++	mov  ch,ah
++
++@@StartAddrEntry:
++	mov  bl,ADDRLOW
++	mov  cl,ADDRHIGH
++	and  si,0003h
++	mov  ah,byte ptr PelPanMask[si]
++	mov  al,PELPANNING+20h
++	mov  si,ax
++
++	cmp word ptr [VSyncHandlerActive],1
++	jne @@A_3e4
++@@A_3c7:
++	cmp word ptr [StartAddressFlag],0
++	jne @@A_3c7
++	cli
++	mov [WaitingStartLow],bx
++	mov [WaitingStartHigh],cx
++	mov [WaitingPelPan],si
++	mov word ptr [StartAddressFlag],1
++	sti
++	jmp @@A_40a
++@@A_3e4:
++	mov dx,03DAh
++@@A_3e7:
++	in al,dx
++	test al,01
++	jne @@A_3e7
++	mov dx,03D4h
++	mov ax,bx
++	cli
++	out dx,ax
++	mov ax,cx
++	out dx,ax
++	sti
++	mov dx,03DAh
++@@A_3fa:
++	in al,dx
++	test al,08
++	je @@A_3fa
++	mov dx,03C0h
++	mov ax,si
++	cli
++	out dx,al
++	mov al,ah
++	out dx,al
++	sti
++@@A_40a:
++	mov byte ptr [ErrorValue],OK
++end;
++
++Procedure XTextMode; assembler;
++asm
++	mov   CurrXMode,XMODETEXT
++	mov   ax,03h
++	int   10h
++end;
++
++Procedure XLine( x1, y1, x2, y2, PgOffs, Color : word ); assembler;
++Var
++	vertincr, incr1, incr2, routine:word;
++asm
++	mov ax,0a000h
++	mov es,ax
++
++	mov dx,ScIndex
++	mov si,ScrnLogicalByteWidth
++	mov cx,x2
++	sub cx,x1
++	jz  @@VertLine
++	jns @@L01
++
++	neg cx
++
++	mov bx,x2
++	xchg x1, bx
++	mov x2,bx
++
++	mov bx,y2
++	xchg  y1, bx
++	mov y2,bx
++
++@@L01:
++	mov bx,y2
++	sub bx,y1
++	jnz @@skip
++	jmp @@HorizLine
++
++@@skip:
++	jns @@L03
++	neg bx
++	neg si
++
++@@L03:
++	mov vertincr,si
++	mov routine,offset @@LoSlopeLine
++	cmp bx,cx
++	jle @@L04
++	mov routine,offset @@HiSlopeLine
++	xchg  bx,cx
++
++
++@@L04:
++	shl bx,1
++	mov incr1,bx
++	sub bx,cx
++	mov si,bx
++	sub bx,cx
++	mov incr2,bx
++
++	push  cx
++	mov bx, y1
++	shl bx,1
++	mov ax, WORD PTR SCROFFSETTABLE[bx]
++	mov bx,x1
++	mov cl,bl
++	shr bx,2
++	add bx,ax
++	add bx,PgOffs
++	and cl,3
++	mov di,bx
++	mov al,1
++	shl al,cl
++	mov ah,al
++	shl al,4
++	add ah,al
++	mov bl,ah
++	pop cx
++	inc cx
++	jmp routine
++
++@@VertLine:
++	mov ax,y1
++	mov bx,y2
++	mov cx,bx
++	sub cx,ax
++	jge @@L31
++	neg cx
++	mov ax,bx
++
++@@L31:
++	inc cx
++	mov bx,ax
++	shl bx,1
++	mov ax, WORD PTR SCROFFSETTABLE[bx]
++	mov bx,x1
++	push  cx
++	mov cl,bl
++	shr bx,2
++	add bx,ax
++	add bx,PgOffs
++	and cl,3
++
++	mov ah,1
++	shl ah,cl
++	mov al,MapMask
++	out dx,ax
++	pop cx
++	mov ax, word ptr [Color]
++
++@@L32:
++	mov es:[bx],al
++	add bx,si
++	loop  @@L32
++	jmp @@Lexit
++
++@@HorizLine:
++	push  ds
++
++	mov bx,y1
++	shl bx,1
++	mov ax, WORD PTR SCROFFSETTABLE[bx]
++	mov bx,x1
++	mov cl,bl
++	shr bx,2
++	add bx,ax
++	add bx,PgOffs
++	and cl,3
++
++	mov di,bx
++	mov dl,00fh
++	shl dl,cl
++
++	mov cx,x2
++	and cl,3
++	mov dh,00eh
++	shl dh,cl
++	not dh
++
++	mov ax,x2
++	mov bx,x1
++
++	shr ax,2
++	shr bx,2
++	mov cx,ax
++	sub cx,bx
++
++	mov ax,dx
++	mov dx,SCINDEX
++	mov bx, [Color]
++	or  cx,cx
++	jnz @@L42
++	and ah,al
++	jmp @@L44
++
++@@L42:
++	push ax
++	mov ah,al
++	mov al,MAPMASK
++	out dx,ax
++	mov al,bl
++	stosb
++	dec cx
++
++@@L43:
++	mov ah,0Fh
++	mov al,MAPMASK
++	out dx,ax
++	mov al,bl
++	rep stosb
++	pop     ax
++
++@@L44:
++	mov al,MAPMASK
++	out dx, ax
++	mov     byte ptr es:[di],bl
++	pop ds
++	jmp @@Lexit
++
++
++@@LoSlopeLine:
++	mov al,MAPMASK
++	mov bh,byte ptr [Color]
++@@L10:
++	mov ah,bl
++
++@@L11:
++	or  ah,bl
++	rol bl,1
++	jc  @@L14
++
++	or  si,si
++	jns @@L12
++	add si,incr1
++	loop  @@L11
++
++	out dx,ax
++	mov es:[di],bh
++	jmp @@Lexit
++
++@@L12:
++	add si,incr2
++	out dx,ax
++	mov es:[di],bh
++	add di,vertincr
++	loop  @@L10
++	jmp @@Lexit
++
++@@L14:
++	out dx,ax
++	mov es:[di],bh
++	inc di
++	or  si,si
++	jns @@L15
++	add si,incr1
++	loop  @@L10
++	jmp @@Lexit
++
++@@L15:
++	add si,incr2
++	add di,vertincr
++	loop  @@L10
++	jmp @@Lexit
++
++@@HiSlopeLine:
++	mov bx,vertincr
++	mov al,MAPMASK
++@@L21:
++	out dx,ax
++	push  ax
++	mov ax,Color
++	mov es:[di],al
++	pop ax
++	add di,bx
++
++@@L22:
++	or  si,si
++	jns @@L23
++
++	add si,incr1
++	loop  @@L21
++	jmp @@Lexit
++
++@@L23:
++	add si,incr2
++	rol ah,1
++	adc di,0
++@@lx21: loop  @@L21
++
++
++@@Lexit:
++end;
++
++Procedure XPutPix( X,Y,PgOfs,Color:word ); assembler;
++asm
++	mov bx,Y
++	shl bx,1
++	mov ax, WORD PTR SCROFFSETTABLE[bx]
++	mov  bx,X
++	shr  bx,2
++	add  bx,ax
++	add  bx,PgOfs
++	mov  ax,SCREENSEG
++	mov  es,ax
++
++	mov  cl,byte ptr X
++	and  cl,011b
++	mov  ax,0100h + MAPMASK
++	shl  ah,cl
++	mov  dx,SCINDEX
++	out  dx,ax
++	mov  al,byte ptr Color
++	mov  es:[bx],al
++end;
++
++Procedure XRectFill( StartX,StartY,EndX,EndY,
++						PageBase,Color:word ); assembler;
++asm
++	push bp
++	cld
++	mov bx,StartY
++	shl bx,1
++	mov ax, WORD PTR SCROFFSETTABLE[bx]
++	mov  di,StartX
++	shr  di,1
++	shr  di,1
++	add  di,ax
++	add  di,PageBase
++	mov  ax,SCREENSEG
++	mov  es,ax
++	mov  dx,SCINDEX
++	mov  al,MAPMASK
++	out  dx,al
++	inc  dx
++	mov  si,StartX
++	and  si,0003h
++	mov  bh,byte ptr LeftClipPlaneMask[si]
++	mov  si,EndX
++	and  si,0003h
++	mov  bl,byte ptr RightClipPlaneMask[si]
++	mov  cx,EndX
++	mov  si,StartX
++	cmp  cx,si
++	jle  @@FillDone
++	dec  cx
++	and  si,not 011b
++	sub  cx,si
++	shr  cx,1
++	shr  cx,1
++	jnz  @@MasksSet
++	and  bh,bl
++
++@@MasksSet:
++	mov  si,EndY
++	sub  si,StartY
++	jle  @@FillDone
++	mov  ah,byte ptr Color
++	mov  bp,ScrnLogicalByteWidth
++	sub  bp,cx
++	dec  bp
++@@FillRowsLoop:
++	push cx
++	mov  al,bh
++	out  dx,al
++	mov  al,ah
++	stosb
++	dec  cx
++	js   @@FillLoopBottom
++	jz   @@DoRightEdge
++	mov  al,00fh
++	out  dx,al
++	mov  al,ah
++	rep  stosb
++@@DoRightEdge:
++	mov  al,bl
++	out  dx,al
++	mov  al,ah
++	stosb
++@@FillLoopBottom:
++	add  di,bp
++	pop  cx
++	dec  si
++	jnz  @@FillRowsLoop
++@@FillDone:
++	pop bp
++end;
++
++Procedure XCpVidRect( SrcStartX,SrcStartY,SrcEndX,SrcEndY,DestStartX,
++											DestStartY,SrcPageBase,DestPageBase,SrcBitmapW,
++											DestBitmapW:word ); assembler;
++var
++	SrcNextOffs,DestNextOffs,RectAddrW,Height:word;
++asm
++	push    ds
++	cld
++	mov     dx,GCINDEX
++	mov     ax,BITMASK
++	out dx,ax
++	mov     ax,SCREENSEG
++				mov     es,ax
++	mov     ax,DestBitmapW
++	shr     ax,2
++	mul     DestStartY
++	mov     di,DestStartX
++	shr     di,2
++	add     di,ax
++	add     di,DestPageBase
++	mov     ax,SrcBitmapW
++	shr     ax,2
++	mul     SrcStartY
++	mov     si,SrcStartX
++	mov     bx,si
++	shr     si,2
++	add     si,ax
++	add     si,SrcPageBase
++	and     bx,0003h
++	mov     ah,byte ptr LeftClipPlaneMask[bx]
++	mov     bx,SrcEndX
++	and     bx,0003h
++	mov     al,byte ptr RightClipPlaneMask[bx]
++	mov     bx,ax
++	mov     cx,SrcEndX
++	mov     ax,SrcStartX
++	cmp     cx,ax
++	jle     @@CopyDone
++	dec     cx
++	and     ax,not 011b
++	sub     cx,ax
++	shr     cx,2
++	jnz     @@MasksSet
++	and     bh,bl
++@@MasksSet:
++	mov     ax,SrcEndY
++	sub     ax,SrcStartY
++	jle     @@CopyDone
++	mov     Height,ax
++	mov     ax,DestBitmapW
++	shr     ax,2
++	sub     ax,cx
++	dec     ax
++	mov     DestNextOffs,ax
++	mov     ax,SrcBitmapW
++	shr     ax,2
++	sub     ax,cx
++	dec     ax
++	mov     SrcNextOffs,ax
++	mov     RectAddrW,cx
++	mov     dx,SCINDEX+1
++	mov     ax,es
++	mov     ds,ax
++@@CopyRowsLoop:
++	mov     cx,RectAddrW
++	mov     al,bh
++	out     dx,al
++	movsb
++	dec     cx
++	js      @@CopyLoopBottom
++	jz      @@DoRightEdge
++	mov     al,00fh
++	out     dx,al
++	rep     movsb
++@@DoRightEdge:
++	mov     al,bl
++	out     dx,al
++	movsb
++@@CopyLoopBottom:
++	add     si,SrcNextOffs
++	add     di,DestNextOffs
++	dec     word ptr Height
++	jnz     @@CopyRowsLoop
++@@CopyDone:
++	mov     dx,GCINDEX+1
++	mov     al,0ffh
++	out     dx,al
++	pop     ds
++end;
++
++
++Procedure XBmToPbm( var source, dest ); assembler;
++asm
++	push ds
++	les  di,dest
++	lds  si,source
++	lodsb
++	test al,03h
++	jnz  @@WidthIncompatible
++	shr  al,2
++	stosb
++	mov  bl,al
++	lodsb
++	stosb
++	xor  ah,ah
++	mul  bl
++	mov  dx,si
++	mov  bl,3
++
++@@PlaneLoop:
++	mov  cx,ax
++
++@@PixelLoop:
++	movsb
++	add  si,3
++	loop @@PixelLoop
++
++	inc  dx
++	mov  si,dx
++	dec  bl
++	jns  @@PlaneLoop
++	xor  ax,ax
++	jmp  @@Done
++@@WidthIncompatible:
++	mov  ax,1
++
++@@Done:
++	pop  ds
++end;
++
++Procedure XPutPbm( X,Y,ScrnOffs:word; var Bitmap ); assembler;
++var
++	Plane,BMHeight:byte;
++	LineInc:word;
++asm
++	push  ds
++	cld
++	mov   ax,SCREENSEG
++	mov   es,ax
++	mov   bx,Y
++	shl   bx,1
++	mov ax, WORD PTR SCROFFSETTABLE[bx]
++	mov   bx,ScrnLogicalByteWidth
++	mov   di,ScrnOffs
++	add   di,ax
++	mov   cx,X
++	mov   dx,cx
++	shr   dx,2
++	add   di,dx
++
++	lds   si,Bitmap
++	lodsw
++	mov   BMHeight,ah
++	xor   ah,ah
++	sub   bx,ax
++	mov   LineInc,bx
++	mov   bh,al
++
++	and   cx,0003h
++
++	mov   ah,11h
++	shl   ah,cl
++	mov   dx,SCINDEX
++	mov   al,MAPMASK
++	out   dx,al
++	inc   dx
++	mov   [Plane],4
++@@PlaneLoop:
++	push  di
++	mov   bl,BMHeight
++	mov   al,ah
++	out   dx,al
++@@RowLoop:
++	mov   cl,bh
++	shr   cl,1
++	rep   movsw
++	adc   cl,0
++	rep   movsb
++	add   di,LineInc
++	dec   bl
++	jnz   @@RowLoop
++	pop   di
++	rol   ah,1
++	adc   di,0
++	dec   Plane
++	jnz   @@PlaneLoop
++	pop   ds
++end;
++
++Procedure XGetPbm( X,Y: word;SrcWidth,SrcHeight:byte;
++									 ScrnOffs:word; var Bitmap ); assembler;
++var
++	Plane:byte;
++	LineInc:word;
++asm
++	push  ds
++	cld
++	mov   bx,Y
++	shl   bx,1
++	mov ax, WORD PTR SCROFFSETTABLE[bx]
++	mov   bx,ScrnLogicalByteWidth
++	mov   si,ScrnOffs
++	add   si,ax
++	mov   cx,X
++	mov   dx,cx
++	shr   dx,2
++	add   si,dx
++	mov   ax,SCREENSEG
++	mov   ds,ax
++	les   di,Bitmap
++	mov   al,SrcWidth
++	mov   ah,SrcHeight
++	stosw
++	xor   ah,ah
++	sub   bx,ax
++	mov   LineInc,bx
++	mov   bh,al
++	and   cx,0003h
++	mov   ah,11h
++	shl   ah,cl
++	mov   dx,GCINDEX
++	mov   al,READMAP
++	out   dx,al
++	inc   dx
++	mov   Plane,4
++	mov   al,cl
++@@PlaneLoop:
++	push  si
++	mov   bl,SrcHeight
++	out   dx,al
++@@RowLoop:
++	mov   cl,bh
++	shr   cl,1
++	rep   movsw
++	adc   cl,0
++	rep   movsb
++	add   si,LineInc
++	dec   bl
++	jnz   @@RowLoop
++	pop   si
++	inc   al
++	and   al,3
++	rol   ah,1
++	adc   si,0
++	dec   Plane
++	jnz   @@PlaneLoop
++	pop   ds
++end;
++
++Procedure XCompileBitmap( logicalwidth:word; var bitmap, output ); assembler;
++var
++	bwidth,scanx,scany,outputx,outputy,
++	column,setcolumn,inputsize:word;
++asm
++	push ds
++	mov word ptr scanx,0
++	mov word ptr scany,0
++	mov word ptr outputx,0
++	mov word ptr outputy,0
++	mov word ptr column,0
++	mov word ptr setcolumn,0
++
++	lds si,bitmap
++
++	les di,output
++
++	lodsb
++	xor ah, ah
++	mov bwidth, ax
++	mov bl, al
++	lodsb
++	mul bl
++	mov inputsize, ax
++
++@@MainLoop:
++	mov bx, scanx
++	add bx, scany
++
++	mov al, [si+bx]
++	or  al, al
++	jnz @@NoAdvance
++	jmp @@Advance
++@@NoAdvance:
++
++	mov dx, setcolumn
++	cmp dx, column
++	je @@SameColumn
++@@ColumnLoop:
++	mov word ptr es:[di],RolAl
++	add di,2
++	mov word ptr es:[di],AdcSiImmed
++	add di,2
++	mov byte ptr es:[di],0
++	inc di
++	inc dx
++	cmp dx, column
++	jl @@ColumnLoop
++
++	mov byte ptr es:[di],OutAl
++	inc di
++	mov setcolumn, dx
++@@SameColumn:
++	mov dx, outputy
++	add dx, outputx
++	sub dx, 128
++
++	add word ptr scanx, 4
++	mov cx, scanx
++	cmp cx, bwidth
++	jge @@OnePixel
++
++	inc word ptr outputx
++	mov ah, [si+bx+4]
++	or ah, ah
++	jnz @@TwoPixels
++@@OnePixel:
++	cmp dx, 127
++	jg @@OnePixLarge
++	cmp dx, -128
++	jl @@OnePixLarge
++	mov word ptr es:[di],ShortStore8
++	add di,2
++	mov byte ptr es:[di],dl
++	inc di
++	jmp @@EmitOnePixel
++@@OnePixLarge:
++	mov word ptr es:[di],Store8
++	add di,2
++	mov word ptr es:[di],dx
++	add di,2
++@@EmitOnePixel:
++	mov byte ptr es:[di],al
++	inc di
++	jmp @@Advance
++@@TwoPixels:
++	cmp dx, 127
++	jg @@TwoPixLarge
++	cmp dx, -128
++	jl @@TwoPixLarge
++	mov word ptr es:[di],ShortStore16
++	add di,2
++	mov byte ptr es:[di],dl
++	inc di
++	jmp @@EmitTwoPixels
++@@TwoPixLarge:
++	mov word ptr es:[di],Store16
++	add di,2
++	mov word ptr es:[di],dx
++	add di,2
++@@EmitTwoPixels:
++	mov word ptr es:[di],ax
++	add di,2
++
++@@Advance:
++	inc word ptr outputx
++	mov ax, scanx
++	add ax, 4
++	cmp ax, bwidth
++	jl @@AdvanceDone
++	mov dx, outputy
++	add dx, logicalwidth
++	mov cx, scany
++	add cx, bwidth
++	cmp cx, inputsize
++	jl @@NoNewColumn
++	inc word ptr column
++	mov cx, column
++	cmp cx, 4
++	je @@Exit
++	xor cx, cx
++	mov dx, cx
++@@NoNewColumn:
++	mov outputy, dx
++	mov scany, cx
++	mov word ptr outputx, 0
++	mov ax,column
++@@AdvanceDone:
++	mov scanx, ax
++	jmp @@MainLoop
++
++@@Exit:
++	mov byte ptr es:[di],Return
++	inc di
++	mov ax,di
++	sub ax,word ptr output
++	pop ds
++end;
++
++
++Function XSizeOfCBitmap( logicalwidth:word; var bitmap ):word; assembler;
++var
++	bwidth,scanx,scany,outputx,outputy,
++	column,setcolumn,inputsize:word;
++asm
++	push ds
++	mov word ptr scanx, 0
++	mov word ptr scany, 0
++	mov word ptr outputx, 0
++	mov word ptr outputy, 0
++	mov word ptr column, 0
++	mov word ptr setcolumn, 0
++	lds si,bitmap
++
++	mov di, 1
++
++	lodsb
++	xor ah, ah
++	mov bwidth, ax
++	mov bl, al
++	lodsb
++	mul bl
++	mov inputsize, ax
++
++@@MainLoop:
++	mov bx, scanx
++	add bx, scany
++
++	mov al, [si+bx]
++	or  al, al
++	jnz @@NoAdvance
++	jmp @@Advance
++@@NoAdvance:
++
++	mov dx, setcolumn
++	cmp dx, column
++	je @@SameColumn
++@@ColumnLoop:
++	add di, 5
++	inc dx
++	cmp dx,column
++	jl @@ColumnLoop
++
++	inc di
++	mov setcolumn, dx
++@@SameColumn:
++	mov dx, outputy
++	add dx, outputx
++	sub dx, 128
++
++	add word ptr scanx, 4
++	mov cx, scanx
++	cmp cx, bwidth
++	jge @@OnePixel
++
++	inc word ptr outputx
++	mov ah,[si+bx+4]
++	or ah, ah
++	jnz @@TwoPixels
++@@OnePixel:
++	cmp dx, 127
++	jg @@OnePixLarge
++	cmp dx, -128
++	jl @@OnePixLarge
++	add di, 4
++	jmp @@EmitOnePixel
++@@OnePixLarge:
++	add di, 5
++@@EmitOnePixel:
++	jmp @@Advance
++@@TwoPixels:
++	cmp dx, 127
++	jg @@TwoPixLarge
++	cmp dx, -128
++	jl @@TwoPixLarge
++	add di, 5
++	jmp @@EmitTwoPixels
++@@TwoPixLarge:
++	add di, 6
++@@EmitTwoPixels:
++
++@@Advance:
++	inc word ptr outputx
++	mov ax, scanx
++	add ax,4
++	cmp ax, bwidth
++	jl @@AdvanceDone
++	mov dx, outputy
++	add dx, logicalwidth
++	mov cx, scany
++	add cx, bwidth
++	cmp cx, inputsize
++	jl @@NoNewColumn
++	inc word ptr column
++	mov cx, column
++	cmp cx, 4
++	je @@Exit
++	xor cx,cx
++	mov dx,cx
++@@NoNewColumn:
++	mov outputy, dx
++	mov scany, cx
++	mov word ptr outputx, 0
++	mov ax,column
++
++@@AdvanceDone:
++	mov scanx, ax
++	jmp @@MainLoop
++
++@@Exit:
++	mov ax, di
++	pop ds
++end;
++
++
++Procedure XPutCBitmap( XPos,YPos,PageOffset:word; var Sprite ); assembler;
++asm
++	push ds
++	mov bx,YPos
++	shl bx,1
++	mov ax, WORD PTR SCROFFSETTABLE[bx]
++	mov si, XPos
++	mov bx, si
++	sar si, 2
++	add si, ax
++	add si, PageOffset
++	add si, 128
++	and bx, 3
++	mov ah, byte ptr ColumnMask[bx]
++	mov dx, SCINDEX
++	mov al, MAPMASK
++	out dx, ax
++	inc dx
++	mov al, ah
++	mov bx, SCREENSEG
++	mov ds, bx
++{$IFDEF FPC}
++	call far Sprite
++{$ELSE}
++	call Sprite
++{$ENDIF}
++	pop ds
++end;
++
++Procedure XPutPalStruc( Var CompPalBuff ); assembler;
++asm
++	push ds
++	cld
++	lds  si,CompPalBuff
++	lodsb
++	mov  ah,0
++	mov  bx,ax
++	lodsb
++	mov  ah,0
++	mov	 cx,ax
++	or   cx,cx
++	jz   @@Done
++	cld
++	mov  dx,INPUTSTATUS0
++@@WaitNotVsync:
++	in   al,dx
++	test al,08h
++	jnz  @@WaitNotVsync
++@@WaitVsync:
++	in   al,dx
++	test al,08h
++	jz   @@WaitVsync
++	mov  ax,bx
++@@SetLoop:
++	mov  dx,DACWRITEINDEX
++	out  dx,al
++	mov  dx,DACDATA
++	outsb
++	outsb
++	outsb
++	inc  al
++	loop @@SetLoop
++@@Done:
++	pop ds
++end;
++
++Procedure XPutPalRaw( Var PalBuff; NumColors,StartColor:word ); assembler;
++asm
++	push ds
++	mov  cx,NumColors
++	mov  bx,StartColor
++	lds  si,PalBuff
++@@WritePalEntry:
++	or   cx,cx
++	jz   @@Done
++	cli
++	cld
++	mov  dx,INPUTSTATUS0
++@@WaitNotVsync:
++	in   al,dx
++	test al,08h
++	jnz  @@WaitNotVsync
++@@WaitVsync:
++	in   al,dx
++	test al,08h
++	jz   @@WaitVsync
++	mov  ax,bx
++@@SetLoop:
++	mov  dx,DACWRITEINDEX
++	out  dx,al
++	mov  dx,DACDATA
++	outsb
++	outsb
++	outsb
++	inc  al
++	loop @@SetLoop
++@@Done:
++	sti
++	pop  ds
++end;
++
++
++Procedure XSetRGB( ColorIndex,R,G,B:byte ); assembler;
++asm
++	mov  al,ColorIndex
++	mov  dx,DACWRITEINDEX
++	out  dx,al
++	mov  dx,DACDATA
++	mov  al,R
++	out  dx,al
++	mov  al,G
++	out  dx,al
++	mov  al,B
++	out  dx,al
++end;
++
++End.
+diff -uraN src13/xqenter.pas src14/xqenter.pas
+--- src13/xqenter.pas	1996-03-13 06:32:48.000000000 -0600
++++ src14/xqenter.pas	2022-02-02 15:37:44.034790043 -0600
+@@ -15,7 +15,6 @@
+ 
+ var f:file of enemykindtype;
+     i:integer;
+-    r:real;
+ 
+ begin
+ 
+diff -uraN src13/xqinit.pas src14/xqinit.pas
+--- src13/xqinit.pas	1996-03-27 09:58:52.000000000 -0600
++++ src14/xqinit.pas	2022-02-02 15:37:44.034790043 -0600
+@@ -219,19 +219,21 @@
+ function parseBLASTER(var addr,irq:word;var dma:byte):boolean;
+ var s,s2:string;
+     i,j:word;
++    b:boolean;
+ begin
+   s:=getenv('BLASTER');
+   if s='' then begin parseBLASTER:=false;exit;end
+     else parseBLASTER:=true;
+   i:=pos('a',s);if i=0 then i:=pos('A',s);
+   s2:=copy(s,i+1,length(s));
+-  inthex(s2,addr);
++  b:=inthex(s2,addr);
++  if b then begin end; { Silence compiler warning. }
+   i:=pos('i',s);if i=0 then i:=pos('I',s);
+   s2:=copy(s,i+1,length(s));
+-  intdec(s2,irq);
++  b:=intdec(s2,irq);
+   i:=pos('d',s);if i=0 then i:=pos('D',s);
+   s2:=copy(s,i+1,length(s));
+-  intdec(s2,j);
++  b:=intdec(s2,j);
+   dma:=j;
+ end;
+ 
+@@ -242,6 +244,7 @@
+   for a:=1 to 6 do b:=port[$0388];
+   port[$0389]:=data;
+   for a:=1 to 35 do b:=port[$0388];
++  if b=0 then begin end; { Silence compiler warning. }
+ end;
+ 
+ function AdLibPresent:boolean;
+@@ -430,7 +433,7 @@
+   begin
+     writeln2(15,1,'XQUEST 2');
+     writeln2(11,1,'Copyright (C) 1996 Mark Mackey (Atomjack).');
+-    writeln2(14,1,'ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ');
++{
+     writeln2(14,1,'');
+     writeln2(14,1,'If you enjoyed this game then a donation of UKP10 (US$15) would');
+     writeln2(14,1,'be much appreciated and would encourage me to continue supporting');
+@@ -447,6 +450,7 @@
+     writeln2(14,1,'');
+     writeln2(14,1,'Please send any comments, suggestions, praise, flames, and bug');
+     writeln2(14,1,'reports to me. Any and all feedback is welcome.');
++}
+     writeln2(14,1,'');
+     writeln2(14,1,'I hope you had as much fun playing this game as I had making it!');
+     writeln2(14,1,'');
+@@ -520,7 +524,9 @@
+   end;
+   proc:=proctype(savedintvec8);   {proc points to old interrupt vector}
+   setintvec(8,@Timer);
++{$IFNDEF FPC}
+   HeapError:=@HeapFunc;           {install new Heap error handler}
++{$ENDIF}
+ end;
+ 
+ procedure TextWindow(Text:string);
+@@ -748,13 +754,17 @@
+     ob:objtype;
+     PU:PowerUpType;
+     GT:GateType;
++    sz:word;
+ 
+   procedure makemask(var p:longarray;width,bmwidth,height:integer;var mask:maskptr);
+-  var i,j,k,l:integer;
++  var i,l:integer;
++{$IFDEF FPC} {$warn 4110 off} {$ENDIF}
++{ The '$80000000' value is not a legal longint. }
+   const bits:array[0..31] of longint=
+     ($8000,$4000,$2000,$1000,$800,$400,$200,$100,$80,$40,$20,$10,$8,$4,$2,$1,
+      $80000000,$40000000,$20000000,$10000000,$8000000,$4000000,$2000000,
+      $1000000,$800000,$400000,$200000,$100000,$80000,$40000,$20000,$10000);
++{$IFDEF FPC} {$warnings on} {$ENDIF}
+   begin
+     getmem(mask,height*4);   {get memory for mask}
+     for i:=0 to (height-1) do
+@@ -792,7 +802,7 @@
+   function readandcompilebitmap(var f:file;var p:longarray;
+        var width,bmwidth,height:integer;var pic:pointer):word;
+       {returns size of compiled bitmap}
+-  var i,j:integer;
++  var 
+       size:word;
+   begin
+ {$IFDEF TESTMEM}
+@@ -804,7 +814,9 @@
+     bmwidth:=((width-1) div 4)+1; {byte width}
+     p[1]:=bmwidth*4;
+     p[2]:=height;
++{$IFNDEF FPC} { FPC complains because longarray is 60000, which exceeds max SmalInt value (2^15-1) }
+     if p[1]*height>sizeof(longarray) then halt;
++{$ENDIF}
+     blockread(f,p[3],p[1]*height);
+       {file actually contains a width which is always a multiple of 4}
+     size:=xsizeofcbitmap(ScrnLogicalByteWidth,p);
+@@ -820,7 +832,9 @@
+     bmwidth:=((width-1) div 4)+1; {byte width}
+     p[1]:=bmwidth*4;
+     p[2]:=height;
++{$IFNDEF FPC} { FPC complains because longarray is 60000, which exceeds max SmalInt value (2^15-1) }
+     if bmwidth*4*height>sizeof(longarray) then halt;
++{$ENDIF}
+     blockread(f,p[3],bmwidth*4*height);
+       {file actually contains a width which is always a multiple of 4}
+     getmem(pic,height*bmwidth*4+2);
+@@ -878,12 +892,13 @@
+   begin
+     for i:=1 to MaxShipPics do
+     begin
+-      readandcompilebitmap(f,p^,width,bmwidth,height,pic[i-1]);
++      sz:=readandcompilebitmap(f,p^,width,bmwidth,height,pic[i-1]);
+       makemask(p^,width,bmwidth,height,mask[i-1]);
+     end;
+     getmem(backgr,bmwidth*height*4+4);
+     getmem(oldbackgr,bmwidth*height*4+4);
+-    readandcompilebitmap(f,p^,misswidth,missbmwidth,missheight,misspic);
++    sz:=readandcompilebitmap(f,p^,misswidth,missbmwidth,missheight,misspic);
++    if sz = 0 then begin end; { Silence compiler warning. }
+     makemask(p^,misswidth,missbmwidth,missheight,missmask);
+ {$IFDEF TESTMEM}
+   writeln(memfile,'End of ship and missiles masks: ',maxavail);
+@@ -902,7 +917,7 @@
+   with objects do
+   for ob:=crys to smart do
+   begin
+-    readandcompilebitmap(f,p^,width,bmwidth,height,pic[ob]);
++    sz:=readandcompilebitmap(f,p^,width,bmwidth,height,pic[ob]);
+     makemask(p^,width,bmwidth,height,mask[ob]);
+     temp:=bmwidth*height*4+4;
+     if temp>maxtemp then maxtemp:=temp;
+@@ -927,7 +942,7 @@
+ 
+   with emines do
+   begin
+-    readandcompilebitmap(f,p^,width,bmwidth,height,pic);
++    sz:=readandcompilebitmap(f,p^,width,bmwidth,height,pic);
+     makemask(p^,width,bmwidth,height,mask);
+   end;
+ 
+@@ -935,7 +950,7 @@
+   with enemykind[i] do
+     for j:=0 to numframes do
+     begin
+-      readandcompilebitmap(f,p^,width,bmwidth,height,pic[j]);
++      sz:=readandcompilebitmap(f,p^,width,bmwidth,height,pic[j]);
+       makemask(p^,width,bmwidth,height,mask[j]);
+     end;
+ 
+@@ -961,7 +976,7 @@
+   for i:=1 to MaxMissileKinds do
+   with emisskind[i] do
+   begin
+-    readandcompilebitmap(f,p^,width,bmwidth,height,pic);
++    sz:=readandcompilebitmap(f,p^,width,bmwidth,height,pic);
+     makemask(p^,width,bmwidth,height,mask);
+     temp:=bmwidth*height*4+4;
+     if temp>maxtemp then maxtemp:=temp;    {get maximum missile PBM size}
+@@ -1008,7 +1023,7 @@
+ 
+   for k:=0 to 9 do
+     with smallfont do
+-      readandcompilebitmap(f,p^,width,bmwidth,height,pic[char(48+k)]);
++      sz:=readandcompilebitmap(f,p^,width,bmwidth,height,pic[char(48+k)]);
+   with smallfont do
+   begin
+     getmem(TimeRecord.backgr,bmwidth*height*4*9+4);
+@@ -1050,7 +1065,6 @@
+ var i:integer;
+     pl:playertype;
+     pu:PowerUpType;
+-    f:file;
+ begin
+   randomize;
+   Player:=Player1;
+@@ -1603,6 +1617,7 @@
+ var pal2:^arr;
+     a:byte;
+     b:integer;
++    d:boolean;
+ begin
+   SetXModeNoSplitScreen;
+   XPutPalRaw(blankpalette,256,0);
+@@ -1624,7 +1639,8 @@
+   MyDelay(100);
+   XPutPalStruc(palette);
+   ClearInputBuffers(NoStars);
+-  DelayOrEvent(3*longint(ticks) div 2);
++  d:=DelayOrEvent(3*longint(ticks) div 2);
++  if d then begin end; { Silence compiler warning. }
+   new(pal2);  {fade out}
+   pal2^[0]:=palette[0];
+   pal2^[1]:=palette[1];
+@@ -1647,7 +1663,7 @@
+   MyDelay(100);
+   XPutPalStruc(titlepalette);
+   ClearInputBuffers(NoStars);
+-  DelayOrEvent(longint(ticks)*3);
++  d:=DelayOrEvent(longint(ticks)*3);
+   pal2^[0]:=0;
+   pal2^[1]:=255;
+   for a:=64 downto 0 do
+@@ -1993,7 +2009,6 @@
+ end;
+ 
+ procedure XDrawSlideBar(X,Y,Page,Color,BColor,Min,Max:integer; var value:integer);
+-var i,j:integer;
+ begin
+ {  ResetStars(X-1,Y-1,X+101,Y+12);  takes too long}
+   XRectFill(X-1,Y-1,X+101,Y+12,Page,BColor);
+@@ -2018,7 +2033,7 @@
+ 		     (r:35;g:35;b:51),(r:40;g:40;b:48),
+ 		     (r:45;g:45;b:45));
+ var selected:byte;
+-    i,k,but,mx,my:integer;
++    i,but,mx,my:integer;
+     ColorCycle,FrameCount:word;
+     MenuY:word;
+ 
+@@ -2150,12 +2165,12 @@
+ 
+ procedure EndScreen;
+ var a,b:integer;
+-    f:file;
+-    delaycount:longint;
++    d:boolean;
+ begin
+   XWindow(110+VisiblePageX,94+VisiblePageY,210+VisiblePageX,126+VisiblePageY,2,VisiblePageOffs);
+   XText(TextWindowX+15,TextWindowY+9,False,VisiblePageOffs,'GAME OVER');
+-  DelayOrEvent(2*ticks);
++  d:=DelayOrEvent(2*ticks);
++  if d then begin end; { Silence compiler warning. }
+   if demomode then
+   begin
+     GameInfo[Player1].Score:=-10;
+@@ -2169,7 +2184,7 @@
+     recording:=false;
+     XWindow(90+VisiblePageX,90+VisiblePageY,230+VisiblePageX,130+VisiblePageY,2,VisiblePageOffs);
+     XText(TextWindowX+15,TextWindowY+13,False,VisiblePageOffs,'DEMO RECORDED');
+-    DelayOrEvent(2*Ticks);
++    d:=DelayOrEvent(2*Ticks);
+   end;
+   mstatus(a,b);  {reset mouse}
+   XRectFill(0,0,ScrnLogicalPixelWidth,ScrnLogicalHeight,Page0Offs,0);
+diff -uraN src13/xquest.pas src14/xquest.pas
+--- src13/xquest.pas	1996-03-27 09:59:22.000000000 -0600
++++ src14/xquest.pas	2022-02-02 15:37:44.034790043 -0600
+@@ -114,7 +114,7 @@
+ var debugfile:text;
+ {$ENDIF}
+ 
+-var i:integer;
++
+ 
+ {$IFDEF ZTIMER}
+ const numtimes:word=0;
+@@ -171,7 +171,7 @@
+ end;
+ 
+ procedure SetupNewLevel(player:playertype);
+-var i,j:integer;
++var i:integer;
+ 
+   function NoOverlap(Numobj:integer):boolean;
+   var i,j:integer;
+@@ -336,7 +336,6 @@
+ 
+ Procedure AddToScore(i:longint);
+ var s:string[20];
+-    j:integer;
+ begin
+   with GameInfo[Player] do
+   begin
+@@ -349,7 +348,7 @@
+ end;  {AddToScore}
+ 
+ procedure StartNewLevel;
+-var i,j:integer;
++var i:integer;
+ begin
+   NumEnemies:=0;                {initialise variables for this level}
+   NumExplosions:=0;
+@@ -469,7 +468,8 @@
+ 
+ procedure GiveBonus;
+ var TimeTaken,Bonus,i:longint;
+-    s,s2:string[40];
++    s:string[40];
++    d:boolean;
+ begin
+   with GameInfo[Player] do
+   begin
+@@ -531,7 +531,8 @@
+       AddtoScore(bonus);
+       if bonus>0 then PlaySound(countdown);
+     end;
+-    DelayOrEvent(longint(Ticks)*5 div 2);
++    d:=DelayOrEvent(longint(Ticks)*5 div 2);
++    if d then begin end; { Silence compiler warning. }
+   end;
+ end;
+ 
+@@ -710,10 +711,10 @@
+     ParamHelp;
+   end;
+ 
+-var i,ParamNum:integer;
++var ParamNum:integer;
+     NoSound:boolean;
+ 
+-    dir:dirstr;nam:namestr;ext:extstr;s:string;
++
+ begin
+ {$IFDEF RECORDCHECK}
+ 	  {debugging check on record sizes}
+@@ -910,7 +911,7 @@
+ end;    {SetDemoFile}
+ 
+ procedure MoveGate;
+-var i,move:integer;
++var move:integer;
+ begin
+   move:=GateMoveCount div 64;
+   GateMoveCount:=GateMoveCount mod 64;
+@@ -1203,10 +1204,13 @@
+   {checks bitmap collisions. mask1 is the left hand mask and the
+     bounding boxes must have collided
+      ie x1<=x2 and 0<=x2-x1<=31}
++{$IFDEF FPC} {$warn 4110 off} {$ENDIF}
++{ The '$80000000' value is not a legal longint. }
+   const bits:array[0..31] of longint=
+     ($8000,$4000,$2000,$1000,$800,$400,$200,$100,$80,$40,$20,$10,$8,$4,$2,$1,
+      $80000000,$40000000,$20000000,$10000000,$8000000,$4000000,$2000000,
+      $1000000,$800000,$400000,$200000,$100000,$80000,$40000,$20000,$10000);
++{$IFDEF FPC} {$warnings on} {$ENDIF}
+ 
+   var i,j:integer;
+ {$IFDEF TESTCOLLIDE}
+@@ -1428,7 +1432,7 @@
+ 
+ 
+ procedure MoveShip;
+-var but,missbut,smartbut,mx,my,temp:integer;
++var but,missbut,smartbut,temp:integer;
+     theta:real; {For ShipDir}
+     deltax,deltay,modulus:longint; {for Gravity/repulsor effects}
+     i:longint;
+@@ -1533,10 +1537,6 @@
+ 		  end;
+   var i:word;
+       collided:boolean;
+-  const bits:array[0..31] of longint=
+-    ($8000,$4000,$2000,$1000,$800,$400,$200,$100,$80,$40,$20,$10,$8,$4,$2,$1,
+-     $80000000,$40000000,$20000000,$10000000,$8000000,$4000000,$2000000,
+-     $1000000,$800000,$400000,$200000,$100000,$80000,$40000,$20000,$10000);
+   begin
+     i:=longtoword(wallmask).high;
+     longtoword(wallmask).high:=longtoword(wallmask).low;
+@@ -1886,7 +1886,14 @@
+ ***}
+ 
+ 
+-
++{$IFNDEF FPC}
++{ FPC defines 'Real2Double()' for reading 'real48' types. This is for Turbo
++  Pascal; it returns a Real (not a Double, as the name suggests). }
++function Real2Double(val:compatReal): Real;
++begin
++    Real2Double := val;
++end;
++{$ENDIF}
+ 
+ 
+ procedure MoveEnemies;
+@@ -1977,14 +1984,14 @@
+   begin
+     with enemy[i].typ do
+     begin
+-      if fires and (random<fireprob) then AddEnemyMissile(i);
+-      if laysmines and (random<fireprob) then AddEnemyMine(i);
++      if fires and (random<Real2Double(fireprob)) then AddEnemyMissile(i);
++      if laysmines and (random<Real2Double(fireprob)) then AddEnemyMine(i);
+       with enemy[i] do
+       begin
+ 	inc(frame,framespeed);
+ 	if frame>=((numframes+1) shl 8) then frame:=0;
+ 		 { plot frames 0.. numframes }
+-	if (follows and (random<follow)) and (not ShipDestroyed) then
++	if (follows and (random<Real2Double(follow))) and (not ShipDestroyed) then
+ 	begin
+ 	  delx:=ship.x-x;
+ 	  dely:=ship.y-y;
+@@ -1994,7 +2001,7 @@
+ 	    {dx + dy =speed, in direction of ship}
+ 	end
+ 	else
+-	if random<changedir then
++	if random<Real2Double(changedir) then
+ 	begin
+ 	  if (zoom and ((abs(ship.delx)+abs(ship.dely))<60)) then
+ 	  begin
+@@ -2022,7 +2029,7 @@
+ 	end;
+ 	if curves then
+ 	begin
+-	  if random<changecurve then
++	  if random<Real2Double(changecurve) then
+ 	  begin
+ 	    curvesin:=-curve2+random(curve);
+ 	    curvecos:=round(sqrt(1-sqr(curvesin/32767))*32767);
+@@ -2365,7 +2372,6 @@
+ 
+ 
+ procedure ObjectHit(i:integer);
+-var j:integer;
+ begin
+   with objects do
+   if pos[i].typ=crys then
+@@ -2444,6 +2450,7 @@
+ 
+ begin  {CheckCollisions}
+   HeavyFireValue:=PowerUp[HeavyFire].value;
++  if HeavyFireValue=0 then begin end; { Silence compiler warning. }
+   SpecialGiven:=false;
+   if not ShipDestroyed then
+   begin
+@@ -2792,7 +2799,6 @@
+ var i,mins,bits:longint;
+     secs:longint;
+     s,temp:timestr;
+-    p:pointer;
+ 
+   procedure str2(i:longint;var s:timestr);
+   begin
+@@ -3178,7 +3184,6 @@
+ procedure NewLife;
+ var i:integer;
+     PU:PowerUpType;
+-    temp:longint;
+ begin
+   dec(GameInfo[Player].Lives);
+   if GameMode=TwoPlayer then
+@@ -3496,6 +3501,7 @@
+     ts:shortstring;
+     tmpSBAddr,tmpSBIrq,tmpSBDMA:word;
+     tmpSoundCard:integer;
++{$IFDEF FPC} {$warn 3177 off} {$ENDIF}
+ const Menu3:MenuListType=(num:6;s:((name:'No soundcard';mtype:item),
+ 				   (name:'Sound Volume';mtype:slidebar;min:0;max:128;value:96),
+ 				   (name:'Port:';mtype:item),
+@@ -3503,6 +3509,7 @@
+ 				   (name:'DMA';mtype:item),
+ 				   (name:'Maximum Sounds:';mtype:item),
+                                    (name:'';mtype:item)));
++{$IFDEF FPC} {$warnings on} {$ENDIF}
+ 
+ begin
+   j:=0;
+@@ -3593,6 +3600,7 @@
+ procedure OptionsMenu;
+ var j:integer;
+     Control:InputDeviceType;
++{$IFDEF FPC} {$warn 3177 off} {$ENDIF }
+ const Menu3:MenuListType=(num:7;s:((name:'One Player';mtype:item),
+ 				   (name:'Sound Setup';mtype:item),
+ 				   (name:'Horizontal Sensitivity';mtype:slidebar;min:4;max:256;value:64),
+@@ -3600,6 +3608,7 @@
+ 				   (name:'Difficulty:';mtype:item),
+ 				   (name:'Input:';mtype:item),
+ 				   (name:'Input Device Setup';mtype:item)));
++{$IFDEF FPC} {$warnings on} {$ENDIF}
+ 
+ 
+ const ControlOption:array[MouseInput..KeyboardInput] of string[30]=
+@@ -3683,6 +3692,8 @@
+ procedure DemoMenu;
+ var  dir:dirstr;name:namestr;ext:extstr;
+      j:integer;
++     b:boolean;
++{$IFDEF FPC} {$warn 3177 off} {$ENDIF}
+ const Menu2:MenuListType=(num:2;s:((name:'Play Demo';mtype:item),
+ 				   (name:'Record Demo';mtype:item),
+ 				   (name:'';mtype:item),
+@@ -3690,6 +3701,7 @@
+ 				   (name:'';mtype:item),
+ 				   (name:'';mtype:item),
+                                    (name:'';mtype:item)));
++{$IFDEF FPC} {$warnings on} {$ENDIF}
+ 
+ begin
+   j:=XMenu(Menu2,0,60);
+@@ -3707,7 +3719,8 @@
+ 	    XPrintfCenterStars(160,220,VisiblePageOffs,BaseColor,'       Cannot open file '''
+ 				      +demofilename+'''        ');
+ 	    demofilename:='xquest.dmo';
+-	    SetDemoFile(demofilename);
++	    b:=SetDemoFile(demofilename);
++	    if b then begin end; { Silence compiler warning. }
+             WaitForEvent(Stars);
+ 	  end
+ 	  else
+@@ -3755,7 +3768,7 @@
+ 	  begin
+ 	    XPrintfCenterStars(160,220,VisiblePageOffs,BaseColor,'Cannot open file '''+demofilename+'''');
+ 	    demofilename:='xquest.dmo';
+-	    SetDemoFile(demofilename);
++	    b:=SetDemoFile(demofilename);
+             WaitForEvent(Stars);
+ 	  end
+ 	  else
+@@ -3776,6 +3789,7 @@
+ var i:integer;
+     ch:char;
+ 
++{$IFDEF FPC} {$warn 3177 off} {$ENDIF}
+ const Menu1:MenuListType=(num:6;s:((name:'Start Game';mtype:item),
+ 				   (name:'Help';mtype:item),
+ 				   (name:'Hall of Fame';mtype:item),
+@@ -3783,6 +3797,7 @@
+ 				   (name:'Demo';mtype:item),
+ 				   (name:'Quit';mtype:item),
+                                    (name:'';mtype:item)));
++{$IFDEF FPC} {$warnings on} {$ENDIF}
+ 
+ 
+ 
+diff -uraN src13/xqvars.pas src14/xqvars.pas
+--- src13/xqvars.pas	1996-03-27 08:03:30.000000000 -0600
++++ src14/xqvars.pas	2022-02-02 15:37:44.034790043 -0600
+@@ -15,6 +15,13 @@
+ interface
+ uses keyboard,joystick,mouse,filexist,sbunit;
+ 
++{ TP uses 6-byte reals; FPC does not. FPC provides real48 for compatibility. }
++{$IFDEF FPC}
++type compatReal = real48;
++{$ELSE}
++type compatReal = real;
++{$ENDIF}
++
+ type PlayerType=(Player1,Player2);
+      GameModeType=(OnePlayer,TwoPlayer);
+      InputDeviceType=(MouseInput,JoyInput,KeyBoardInput);
+@@ -233,7 +240,7 @@
+ 		 speed,speed2,curve,curve2,hits,firetype,score,deathsound:integer;
+ 		 fires,follows,curves,explodes,laysmines,shootback,zoom,
+ 		   maxspeed,rebounds,tribbles,repulses:boolean;
+-		 fireprob,changedir,changecurve,follow:real;
++		 fireprob,changedir,changecurve,follow:compatReal;
+ 		 pic:array[0..MaxEnemyFrames] of pointer;
+ 		 mask:array[0..maxEnemyFrames] of maskptr;
+ 		    {better as linked list}
