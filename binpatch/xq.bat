@@ -144,7 +144,8 @@ goto prep
 
 
 :patch_nodie
-    %HED%  851f  75  %PAT_FIL%
+    %HED%  851f  90  %PAT_FIL%
+    %HED%  8520  90  %PAT_FIL%
     shift
     goto cont_proc_args
 
